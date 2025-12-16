@@ -16,9 +16,9 @@ import {
 } from "lucide-react";
 
 const stats = [
-  { label: "Papers Available", value: "5,000+", icon: FileText },
-  { label: "Active Students", value: "10,000+", icon: Users },
-  { label: "Courses Covered", value: "50+", icon: BookOpen },
+  { label: "Papers Available", value: "5+", icon: FileText },
+  { label: "Active Students", value: "1+", icon: Users },
+  { label: "Courses Covered", value: "6+", icon: BookOpen },
 ];
 
 const features = [
@@ -45,10 +45,10 @@ const features = [
 ];
 
 const courses = [
-  { name: "B.Tech", papers: "2,500+" },
-  { name: "BCA", papers: "1,200+" },
-  { name: "MCA", papers: "800+" },
-  { name: "Diploma", papers: "600+" },
+  { name: "B.Tech", papers: "2+" },
+  { name: "BCA", papers: "1+" },
+  { name: "MCA", papers: "2+" },
+  { name: "Diploma", papers: "1" },
 ];
 
 export default function Index() {
