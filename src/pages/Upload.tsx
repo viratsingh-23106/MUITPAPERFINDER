@@ -1,63 +1,46 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { FilterSelect } from "@/components/FilterSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  courses, 
-  branches, 
-  semesters, 
-  subjects, 
-  years,
-  getSubjectKey 
-} from "@/lib/data";
-import { Upload, FileUp, CheckCircle, AlertCircle, Info } from "lucide-react";
+import { courses, branches, semesters, years, courseHasBranches } from "@/lib/data";
+import { uploadPaper } from "@/hooks/usePapers";
+import { useAuth } from "@/contexts/AuthContext";
+import { Upload, FileUp, CheckCircle, Info, LogIn, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 export default function UploadPage() {
+  const navigate = useNavigate();
+  const { user, profile } = useAuth();
+  
   const [selectedCourse, setSelectedCourse] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("");
   const [selectedSemester, setSelectedSemester] = useState("");
-  const [selectedSubject, setSelectedSubject] = useState("");
+  const [subject, setSubject] = useState("");
   const [selectedYear, setSelectedYear] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const selectedCourseData = courses.find((c) => c.id === selectedCourse);
-  const hasBranches = selectedCourseData?.hasBranches ?? false;
+  const hasBranches = courseHasBranches(selectedCourse);
   const availableBranches = hasBranches ? branches[selectedCourse] || [] : [];
-  
-  const subjectKey = getSubjectKey(selectedCourse, selectedBranch || undefined, selectedSemester);
-  const availableSubjects = subjects[subjectKey] || [];
 
   const handleCourseChange = (value: string) => {
     setSelectedCourse(value);
     setSelectedBranch("");
-    setSelectedSubject("");
-  };
-
-  const handleBranchChange = (value: string) => {
-    setSelectedBranch(value);
-    setSelectedSubject("");
-  };
-
-  const handleSemesterChange = (value: string) => {
-    setSelectedSemester(value);
-    setSelectedSubject("");
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      // Validate file type
       const allowedTypes = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
       if (!allowedTypes.includes(selectedFile.type)) {
         toast.error("Invalid file type. Please upload PDF or image files only.");
         return;
       }
-      // Validate file size (max 10MB)
       if (selectedFile.size > 10 * 1024 * 1024) {
         toast.error("File too large. Maximum size is 10MB.");
         return;
@@ -69,29 +52,76 @@ export default function UploadPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedCourse || !selectedSemester || !selectedSubject || !selectedYear || !file) {
+    if (!user) {
+      toast.error("Please login to upload papers.");
+      navigate("/auth");
+      return;
+    }
+
+    if (!selectedCourse || !selectedSemester || !subject.trim() || !selectedYear || !file) {
       toast.error("Please fill all required fields and select a file.");
       return;
     }
 
     setIsUploading(true);
     
-    // Simulate upload - in production, this would upload to Supabase Storage
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    
-    toast.success("Paper uploaded successfully! It will be reviewed by admin before publishing.");
-    
-    // Reset form
-    setSelectedCourse("");
-    setSelectedBranch("");
-    setSelectedSemester("");
-    setSelectedSubject("");
-    setSelectedYear("");
-    setFile(null);
-    setIsUploading(false);
+    try {
+      await uploadPaper(file, {
+        course: selectedCourse,
+        branch: selectedBranch || undefined,
+        semester: selectedSemester,
+        subject: subject.trim(),
+        year: selectedYear,
+        uploaderName: profile?.full_name || user.email || "Anonymous",
+      });
+      
+      toast.success("Paper uploaded successfully!");
+      
+      // Reset form
+      setSelectedCourse("");
+      setSelectedBranch("");
+      setSelectedSemester("");
+      setSubject("");
+      setSelectedYear("");
+      setFile(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Upload failed. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const isFormValid = selectedCourse && selectedSemester && selectedSubject && selectedYear && file;
+  const isFormValid = selectedCourse && selectedSemester && subject.trim() && selectedYear && file;
+
+  // Show login prompt if not authenticated
+  if (!user) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center max-w-md mx-auto px-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-6">
+              <LogIn className="h-8 w-8 text-primary" />
+            </div>
+            <h2 className="text-2xl font-bold text-foreground mb-3">Login Required</h2>
+            <p className="text-muted-foreground mb-6">
+              You need to be logged in to upload question papers. 
+              Create an account or sign in to continue.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <Button variant="outline" asChild>
+                <Link to="/auth">Sign In</Link>
+              </Button>
+              <Button asChild>
+                <Link to="/auth?mode=register">Create Account</Link>
+              </Button>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -123,8 +153,8 @@ export default function UploadPage() {
                 <ul className="mt-1 text-muted-foreground space-y-1">
                   <li>• Only PDF and image files (JPG, PNG) are accepted</li>
                   <li>• Maximum file size: 10MB</li>
-                  <li>• Papers will be reviewed by admin before publishing</li>
-                  <li>• Duplicate papers (same course, semester, subject, year) will be rejected</li>
+                  <li>• Enter the exact subject name as it appears on the paper</li>
+                  <li>• Papers are published immediately for other students</li>
                 </ul>
               </div>
             </div>
@@ -145,7 +175,7 @@ export default function UploadPage() {
                     placeholder="Select branch"
                     options={availableBranches}
                     value={selectedBranch}
-                    onChange={handleBranchChange}
+                    onChange={setSelectedBranch}
                     disabled={!selectedCourse}
                   />
                 )}
@@ -155,16 +185,7 @@ export default function UploadPage() {
                   placeholder="Select semester"
                   options={semesters.map((s) => ({ id: s.id, name: s.name }))}
                   value={selectedSemester}
-                  onChange={handleSemesterChange}
-                />
-
-                <FilterSelect
-                  label="Subject *"
-                  placeholder="Select subject"
-                  options={availableSubjects.map((s) => ({ id: s.id, name: s.name }))}
-                  value={selectedSubject}
-                  onChange={setSelectedSubject}
-                  disabled={availableSubjects.length === 0}
+                  onChange={setSelectedSemester}
                 />
 
                 <FilterSelect
@@ -174,6 +195,23 @@ export default function UploadPage() {
                   value={selectedYear}
                   onChange={setSelectedYear}
                 />
+              </div>
+
+              {/* Subject Input - Free text */}
+              <div className="space-y-2">
+                <Label htmlFor="subject" className="text-sm font-medium">
+                  Subject Name *
+                </Label>
+                <Input
+                  id="subject"
+                  placeholder="e.g., Data Structures & Algorithms, Database Management Systems"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter the subject name exactly as it appears on the question paper
+                </p>
               </div>
 
               {/* File Upload */}
@@ -229,7 +267,7 @@ export default function UploadPage() {
               >
                 {isUploading ? (
                   <>
-                    <RefreshCwIcon className="h-5 w-5 animate-spin mr-2" />
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
                     Uploading...
                   </>
                 ) : (
@@ -246,27 +284,5 @@ export default function UploadPage() {
 
       <Footer />
     </div>
-  );
-}
-
-function RefreshCwIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M8 16H3v5" />
-    </svg>
   );
 }
