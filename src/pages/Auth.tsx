@@ -1,13 +1,17 @@
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Mail, Lock, User, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { FileText, Mail, Lock, User, ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AuthPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { user, signIn, signUp } = useAuth();
+  
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -17,6 +21,13 @@ export default function AuthPage() {
     email: "",
     password: "",
   });
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/");
+    }
+  }, [user, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({
@@ -29,16 +40,48 @@ export default function AuthPage() {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate auth - in production, this would use Supabase Auth
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    if (isLogin) {
-      toast.success("Login successful! Welcome back.");
-    } else {
-      toast.success("Account created! Please check your email to verify.");
+    try {
+      if (isLogin) {
+        const { error } = await signIn(formData.email, formData.password);
+        if (error) {
+          if (error.message.includes("Invalid login credentials")) {
+            toast.error("Invalid email or password. Please try again.");
+          } else {
+            toast.error(error.message);
+          }
+        } else {
+          toast.success("Login successful! Welcome back.");
+          navigate("/");
+        }
+      } else {
+        if (!formData.name.trim()) {
+          toast.error("Please enter your full name.");
+          setIsLoading(false);
+          return;
+        }
+        if (formData.password.length < 6) {
+          toast.error("Password must be at least 6 characters.");
+          setIsLoading(false);
+          return;
+        }
+        
+        const { error } = await signUp(formData.email, formData.password, formData.name);
+        if (error) {
+          if (error.message.includes("already registered")) {
+            toast.error("This email is already registered. Please sign in instead.");
+          } else {
+            toast.error(error.message);
+          }
+        } else {
+          toast.success("Account created successfully! Welcome to PYQ Portal.");
+          navigate("/");
+        }
+      }
+    } catch (error) {
+      toast.error("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (
@@ -131,6 +174,7 @@ export default function AuthPage() {
                     onChange={handleChange}
                     className="pl-10 pr-10"
                     required
+                    minLength={6}
                   />
                   <button
                     type="button"
@@ -142,14 +186,6 @@ export default function AuthPage() {
                 </div>
               </div>
 
-              {isLogin && (
-                <div className="text-right">
-                  <a href="#" className="text-sm text-primary hover:underline">
-                    Forgot password?
-                  </a>
-                </div>
-              )}
-
               <Button
                 type="submit"
                 size="lg"
@@ -159,7 +195,7 @@ export default function AuthPage() {
               >
                 {isLoading ? (
                   <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     {isLogin ? "Signing in..." : "Creating account..."}
                   </span>
                 ) : isLogin ? (
@@ -182,16 +218,6 @@ export default function AuthPage() {
                 {isLogin ? "Sign up" : "Sign in"}
               </button>
             </div>
-          </div>
-
-          {/* Role Info */}
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>
-              Are you a senior student or admin?{" "}
-              <a href="#" className="text-primary hover:underline">
-                Request upload access
-              </a>
-            </p>
           </div>
         </div>
       </div>

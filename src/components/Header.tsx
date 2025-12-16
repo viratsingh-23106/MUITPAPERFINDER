@@ -1,11 +1,13 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { FileText, Upload, Search, LogIn, Menu, X } from "lucide-react";
+import { FileText, Upload, Search, LogIn, Menu, X, LogOut, User } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function Header() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, profile, signOut } = useAuth();
 
   const navLinks = [
     { href: "/", label: "Home", icon: FileText },
@@ -14,6 +16,11 @@ export function Header() {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleSignOut = async () => {
+    await signOut();
+    setMobileMenuOpen(false);
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-lg">
@@ -48,15 +55,32 @@ export function Header() {
 
         {/* Auth Buttons */}
         <div className="hidden md:flex items-center gap-3">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/auth">
-              <LogIn className="h-4 w-4 mr-2" />
-              Login
-            </Link>
-          </Button>
-          <Button size="sm" asChild>
-            <Link to="/auth?mode=register">Get Started</Link>
-          </Button>
+          {user ? (
+            <>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span className="max-w-[120px] truncate">
+                  {profile?.full_name || user.email}
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/auth">
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Login
+                </Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link to="/auth?mode=register">Get Started</Link>
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -87,17 +111,31 @@ export function Header() {
                 {link.label}
               </Link>
             ))}
-            <div className="flex gap-2 pt-2 border-t border-border mt-2">
-              <Button variant="outline" size="sm" className="flex-1" asChild>
-                <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
-                  Login
-                </Link>
-              </Button>
-              <Button size="sm" className="flex-1" asChild>
-                <Link to="/auth?mode=register" onClick={() => setMobileMenuOpen(false)}>
-                  Get Started
-                </Link>
-              </Button>
+            <div className="flex flex-col gap-2 pt-2 border-t border-border mt-2">
+              {user ? (
+                <>
+                  <div className="px-4 py-2 text-sm text-muted-foreground">
+                    Signed in as {profile?.full_name || user.email}
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handleSignOut}>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </Button>
+                </>
+              ) : (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1" asChild>
+                    <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
+                      Login
+                    </Link>
+                  </Button>
+                  <Button size="sm" className="flex-1" asChild>
+                    <Link to="/auth?mode=register" onClick={() => setMobileMenuOpen(false)}>
+                      Get Started
+                    </Link>
+                  </Button>
+                </div>
+              )}
             </div>
           </nav>
         </div>
