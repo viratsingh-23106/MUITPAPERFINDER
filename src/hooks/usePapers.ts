@@ -181,3 +181,13 @@ export async function deletePaper(paperId: string) {
 
   return { success: true };
 }
+
+export async function incrementDownload(paperId: string) {
+  const { error } = await supabase.rpc("increment_download", {
+    paper_id: paperId,
+  });
+
+  if (error) {
+    console.error("Failed to increment download:", error.message);
+  }
+}

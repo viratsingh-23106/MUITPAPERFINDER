@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { useStats } from "@/hooks/useStats";
 import { 
   Search, 
   Upload, 
@@ -10,16 +11,10 @@ import {
   BookOpen, 
   Shield, 
   ArrowRight,
-  CheckCircle,
   GraduationCap,
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from "lucide-react";
-
-const stats = [
-  { label: "Papers Available", value: "5+", icon: FileText },
-  { label: "Active Students", value: "1+", icon: Users },
-  { label: "Courses Covered", value: "6+", icon: BookOpen },
-];
 
 const features = [
   {
@@ -44,14 +39,15 @@ const features = [
   },
 ];
 
-const courses = [
-  { name: "B.Tech", papers: "2+" },
-  { name: "BCA", papers: "1+" },
-  { name: "MCA", papers: "2+" },
-  { name: "Diploma", papers: "1" },
-];
-
 export default function Index() {
+  const { stats, loading } = useStats();
+
+  const statsDisplay = [
+    { label: "Papers Available", value: stats.totalPapers, icon: FileText },
+    { label: "Active Students", value: stats.activeStudents, icon: Users },
+    { label: "Courses Covered", value: stats.coursesCount, icon: BookOpen },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col gradient-hero">
       <Header />
@@ -62,7 +58,7 @@ export default function Index() {
           <div className="max-w-4xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6 animate-fade-up">
               <TrendingUp className="h-4 w-4" />
-              Trusted by 1+ students
+              {loading ? "Loading..." : `Trusted by ${stats.activeStudents}+ students`}
             </div>
             
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight animate-fade-up" style={{ animationDelay: "0.1s" }}>
@@ -93,7 +89,7 @@ export default function Index() {
 
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 max-w-3xl mx-auto animate-fade-up" style={{ animationDelay: "0.4s" }}>
-            {stats.map((stat, index) => (
+            {statsDisplay.map((stat) => (
               <div 
                 key={stat.label}
                 className="bg-card rounded-xl p-6 text-center shadow-card hover:shadow-card-hover transition-all duration-300 hover:-translate-y-1"
@@ -101,7 +97,9 @@ export default function Index() {
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg gradient-primary mb-4">
                   <stat.icon className="h-6 w-6 text-primary-foreground" />
                 </div>
-                <div className="text-3xl font-bold text-foreground">{stat.value}</div>
+                <div className="text-3xl font-bold text-foreground">
+                  {loading ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : `${stat.value}+`}
+                </div>
                 <div className="text-sm text-muted-foreground mt-1">{stat.label}</div>
               </div>
             ))}
@@ -121,7 +119,7 @@ export default function Index() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {features.map((feature, index) => (
+              {features.map((feature) => (
                 <div
                   key={feature.title}
                   className="bg-card rounded-xl p-6 shadow-card hover:shadow-card-hover transition-all duration-300 hover:-translate-y-1 group"
@@ -150,18 +148,28 @@ export default function Index() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
-              {courses.map((course) => (
-                <Link
-                  key={course.name}
-                  to={`/search?course=${course.name.toLowerCase()}`}
-                  className="bg-card rounded-xl p-6 text-center shadow-card hover:shadow-card-hover transition-all duration-300 hover:-translate-y-1 group"
-                >
-                  <div className="text-xl font-bold text-foreground group-hover:text-primary transition-colors">
-                    {course.name}
-                  </div>
-                  <div className="text-sm text-muted-foreground mt-1">{course.papers} papers</div>
-                </Link>
-              ))}
+              {loading ? (
+                <div className="col-span-full flex justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : stats.coursesPapers.length > 0 ? (
+                stats.coursesPapers.map((course) => (
+                  <Link
+                    key={course.name}
+                    to={`/search?course=${course.name.toLowerCase()}`}
+                    className="bg-card rounded-xl p-6 text-center shadow-card hover:shadow-card-hover transition-all duration-300 hover:-translate-y-1 group"
+                  >
+                    <div className="text-xl font-bold text-foreground group-hover:text-primary transition-colors">
+                      {course.name}
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">{course.papers} papers</div>
+                  </Link>
+                ))
+              ) : (
+                <div className="col-span-full text-center text-muted-foreground py-8">
+                  No papers uploaded yet. Be the first to contribute!
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -206,7 +214,7 @@ export default function Index() {
                 Ready to Start Preparing?
               </h2>
               <p className="mt-4 text-muted-foreground">
-                Join thousands of students who use PYQ Portal to ace their exams.
+                Join {stats.activeStudents > 0 ? `${stats.activeStudents}+` : "other"} students who use PYQ Portal to ace their exams.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
                 <Button size="lg" variant="hero" asChild>

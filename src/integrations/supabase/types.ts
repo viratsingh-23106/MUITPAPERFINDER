@@ -109,6 +109,7 @@ export type Database = {
         Args: { user_uuid: string }
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      increment_download: { Args: { paper_id: string }; Returns: undefined }
     }
     Enums: {
       user_role: "admin" | "senior" | "student"
