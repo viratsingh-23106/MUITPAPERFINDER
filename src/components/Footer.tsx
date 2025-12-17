@@ -61,7 +61,7 @@ export function Footer() {
                 <Twitter className="h-5 w-5" />
               </a>
               <a
-                href="vs8009423@gmail.com"
+                href="https://www.linkedin.com/in/virat-singh-b33989320"
                 className="p-2 rounded-lg bg-secondary hover:bg-primary hover:text-primary-foreground transition-colors"
               >
                 <Mail className="h-5 w-5" />
