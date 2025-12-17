@@ -3,7 +3,7 @@ import { Download, Eye, Calendar, User, TrendingUp, Trash2, Loader2 } from "luci
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Paper } from "@/hooks/usePapers";
-import { deletePaper } from "@/hooks/usePapers";
+import { deletePaper, incrementDownload } from "@/hooks/usePapers";
 import { getCourseName, getBranchName } from "@/lib/data";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -32,10 +32,12 @@ export function PaperCard({ paper, onDownload }: PaperCardProps) {
   const isUploader = profile?.id === paper.uploaded_by;
 
   const handleView = () => {
+    incrementDownload(paper.id);
     window.open(paper.file_url, "_blank");
   };
 
   const handleDownload = () => {
+    incrementDownload(paper.id);
     const link = document.createElement("a");
     link.href = paper.file_url;
     link.download = paper.file_name;
