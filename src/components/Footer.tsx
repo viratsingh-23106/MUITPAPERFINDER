@@ -49,19 +49,19 @@ export function Footer() {
             <h4 className="font-semibold mb-4">Connect</h4>
             <div className="flex gap-3">
               <a
-                href="#"
+                href="https://github.com/viratsingh-23106"
                 className="p-2 rounded-lg bg-secondary hover:bg-primary hover:text-primary-foreground transition-colors"
               >
                 <Github className="h-5 w-5" />
               </a>
               <a
-                href="#"
+                href="https://x.com/singh_vira23769?t=TlOr6JDAjMqv_nj5HZO3zQ&s=09"
                 className="p-2 rounded-lg bg-secondary hover:bg-primary hover:text-primary-foreground transition-colors"
               >
                 <Twitter className="h-5 w-5" />
               </a>
               <a
-                href="#"
+                href="vs8009423@gmail.com"
                 className="p-2 rounded-lg bg-secondary hover:bg-primary hover:text-primary-foreground transition-colors"
               >
                 <Mail className="h-5 w-5" />
