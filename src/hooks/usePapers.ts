@@ -163,3 +163,21 @@ export async function uploadPaper(
 
   return { success: true };
 }
+
+export async function deletePaper(paperId: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("You must be logged in to delete papers");
+  }
+
+  const { error } = await supabase
+    .from("papers")
+    .delete()
+    .eq("id", paperId);
+
+  if (error) {
+    throw new Error(`Failed to delete paper: ${error.message}`);
+  }
+
+  return { success: true };
+}

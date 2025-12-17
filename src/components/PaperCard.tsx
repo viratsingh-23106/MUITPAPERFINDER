@@ -1,8 +1,23 @@
-import { Download, Eye, Calendar, User, TrendingUp } from "lucide-react";
+import { useState } from "react";
+import { Download, Eye, Calendar, User, TrendingUp, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Paper } from "@/hooks/usePapers";
+import { deletePaper } from "@/hooks/usePapers";
 import { getCourseName, getBranchName } from "@/lib/data";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface PaperCardProps {
   paper: Paper;
@@ -10,12 +25,17 @@ interface PaperCardProps {
 }
 
 export function PaperCard({ paper, onDownload }: PaperCardProps) {
+  const { profile } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Check if current user is the uploader
+  const isUploader = profile?.id === paper.uploaded_by;
+
   const handleView = () => {
     window.open(paper.file_url, "_blank");
   };
 
   const handleDownload = () => {
-    // Trigger download
     const link = document.createElement("a");
     link.href = paper.file_url;
     link.download = paper.file_name;
@@ -25,6 +45,18 @@ export function PaperCard({ paper, onDownload }: PaperCardProps) {
     document.body.removeChild(link);
     
     onDownload?.(paper);
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await deletePaper(paper.id);
+      toast.success("Paper deleted successfully");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete paper");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -77,6 +109,34 @@ export function PaperCard({ paper, onDownload }: PaperCardProps) {
             <Download className="h-3.5 w-3.5" />
             Download
           </Button>
+          {isUploader && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive" className="gap-1.5" disabled={isDeleting}>
+                  {isDeleting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Paper?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete "{paper.subject}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </div>
     </div>
