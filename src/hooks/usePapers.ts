@@ -22,6 +22,7 @@ interface UsePapersOptions {
   branch?: string;
   semester?: string;
   subject?: string;
+  myUploads?: boolean; // Fetch current user's uploads (any status)
 }
 
 export function usePapers(filters: UsePapersOptions = {}) {
@@ -36,8 +37,12 @@ export function usePapers(filters: UsePapersOptions = {}) {
     let query = supabase
       .from("papers")
       .select("*")
-      .eq("status", "approved")
       .order("created_at", { ascending: false });
+
+    // Only filter by approved status if not fetching user's own uploads
+    if (!filters.myUploads) {
+      query = query.eq("status", "approved");
+    }
 
     if (filters.course) {
       query = query.eq("course", filters.course);
@@ -97,7 +102,7 @@ export function usePapers(filters: UsePapersOptions = {}) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [filters.course, filters.branch, filters.semester, filters.subject]);
+  }, [filters.course, filters.branch, filters.semester, filters.subject, filters.myUploads]);
 
   return { papers, loading, error, refetch: fetchPapers };
 }

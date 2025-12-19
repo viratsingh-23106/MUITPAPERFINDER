@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { FileText, Upload, Search, LogIn, Menu, X, LogOut, User } from "lucide-react";
+import { FileText, Upload, Search, LogIn, Menu, X, LogOut, User, FolderOpen } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -13,6 +13,7 @@ export function Header() {
     { href: "/", label: "Home", icon: FileText },
     { href: "/search", label: "Find Papers", icon: Search },
     { href: "/upload", label: "Upload Paper", icon: Upload },
+    ...(user ? [{ href: "/my-uploads", label: "My Uploads", icon: FolderOpen }] : []),
   ];
 
   const isActive = (path: string) => location.pathname === path;
