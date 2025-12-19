@@ -29,6 +29,25 @@ export function usePapers(filters: UsePapersOptions = {}) {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
+
+  // Fetch current user's profile ID if myUploads is true
+  useEffect(() => {
+    if (filters.myUploads) {
+      const fetchProfileId = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+          setProfileId(profile?.id || null);
+        }
+      };
+      fetchProfileId();
+    }
+  }, [filters.myUploads]);
 
   const fetchPapers = async () => {
     setLoading(true);
@@ -39,8 +58,11 @@ export function usePapers(filters: UsePapersOptions = {}) {
       .select("*")
       .order("created_at", { ascending: false });
 
-    // Only filter by approved status if not fetching user's own uploads
-    if (!filters.myUploads) {
+    // Filter by current user's uploads if myUploads is true
+    if (filters.myUploads && profileId) {
+      query = query.eq("uploaded_by", profileId);
+    } else if (!filters.myUploads) {
+      // Only filter by approved status if not fetching user's own uploads
       query = query.eq("status", "approved");
     }
 
@@ -68,6 +90,10 @@ export function usePapers(filters: UsePapersOptions = {}) {
   };
 
   useEffect(() => {
+    // Wait for profileId to be loaded when myUploads is true
+    if (filters.myUploads && !profileId) {
+      return;
+    }
     fetchPapers();
 
     // Set up realtime subscription
@@ -102,7 +128,7 @@ export function usePapers(filters: UsePapersOptions = {}) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [filters.course, filters.branch, filters.semester, filters.subject, filters.myUploads]);
+  }, [filters.course, filters.branch, filters.semester, filters.subject, filters.myUploads, profileId]);
 
   return { papers, loading, error, refetch: fetchPapers };
 }
