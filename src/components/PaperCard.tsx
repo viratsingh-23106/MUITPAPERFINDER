@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Download, Eye, Calendar, User, TrendingUp, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,9 +23,11 @@ import {
 interface PaperCardProps {
   paper: Paper;
   onDownload?: (paper: Paper) => void;
+  showDelete?: boolean;
 }
 
-export function PaperCard({ paper, onDownload }: PaperCardProps) {
+export function PaperCard({ paper, onDownload, showDelete = false }: PaperCardProps) {
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
   
@@ -32,8 +35,8 @@ export function PaperCard({ paper, onDownload }: PaperCardProps) {
   const isUploader = profile?.id === paper.uploaded_by;
 
   const handleView = () => {
-    incrementDownload(paper.id);
-    window.open(paper.file_url, "_blank");
+    // Navigate to paper viewer page (no download increment on view)
+    navigate(`/paper/${paper.id}`);
   };
 
   const handleDownload = () => {
@@ -111,7 +114,7 @@ export function PaperCard({ paper, onDownload }: PaperCardProps) {
             <Download className="h-3.5 w-3.5" />
             Download
           </Button>
-          {isUploader && (
+          {showDelete && isUploader && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button size="sm" variant="destructive" className="gap-1.5" disabled={isDeleting}>

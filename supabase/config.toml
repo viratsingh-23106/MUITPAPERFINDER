@@ -2,3 +2,6 @@ project_id = "qjqiwgruyvqizhyywtfq"
 
 [functions.send-verification-email]
 verify_jwt = false
+
+[functions.paper-chat]
+verify_jwt = false
