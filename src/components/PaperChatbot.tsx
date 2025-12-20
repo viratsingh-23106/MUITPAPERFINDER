@@ -16,19 +16,19 @@ interface PaperChatbotProps {
 
 const QUICK_ACTIONS = [
   { 
-    label: "Generate Similar Paper", 
-    icon: Sparkles,
-    prompt: "Generate a new exam paper with different questions on the same topics as this paper."
-  },
-  { 
     label: "Answer This Paper", 
     icon: FileQuestion,
-    prompt: "Provide detailed answers for all the questions in this existing paper."
+    prompt: "Please analyze the uploaded paper content and provide detailed answers for ALL questions. Identify each question from the paper and give step-by-step solutions with proper explanations, formulas, and examples."
   },
   { 
-    label: "Explain Topics", 
+    label: "Generate Similar Paper", 
+    icon: Sparkles,
+    prompt: "Generate a NEW exam paper with DIFFERENT questions on the same subject and topics as this paper. Follow the EXACT same format and structure as the original paper (same sections, same marking scheme, similar difficulty level). Create original questions that test the same concepts."
+  },
+  { 
+    label: "Answer Generated Paper", 
     icon: BookOpen,
-    prompt: "Explain the main topics and concepts covered in this paper."
+    prompt: "Please generate a similar exam paper first, then provide detailed answers for all the questions in that generated paper."
   },
 ];
 
