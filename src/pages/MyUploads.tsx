@@ -95,7 +95,7 @@ export default function MyUploads() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {papers.map((paper) => (
-              <PaperCard key={paper.id} paper={paper} />
+              <PaperCard key={paper.id} paper={paper} showDelete={true} />
             ))}
           </div>
         )}

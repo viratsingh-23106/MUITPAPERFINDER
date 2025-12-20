@@ -149,7 +149,7 @@ export default function SearchPage() {
             ) : papers.length > 0 ? (
               <div className="grid gap-4">
                 {papers.map((paper) => (
-                  <PaperCard key={paper.id} paper={paper} />
+                  <PaperCard key={paper.id} paper={paper} showDelete={false} />
                 ))}
               </div>
             ) : (
