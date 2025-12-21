@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getDocument, GlobalWorkerOptions } from "https://esm.sh/pdfjs-dist@4.4.168/build/pdf.min.mjs";
+import { extractText } from "https://esm.sh/unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,10 +20,7 @@ interface ChatMessage {
   content: string;
 }
 
-// Disable worker for Deno environment
-GlobalWorkerOptions.workerSrc = "";
-
-// Function to extract text from PDF using pdf.js
+// Function to extract text from PDF using unpdf
 async function extractPdfText(fileUrl: string): Promise<string> {
   try {
     console.log("Fetching PDF from:", fileUrl);
@@ -35,94 +32,90 @@ async function extractPdfText(fileUrl: string): Promise<string> {
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
+    console.log("PDF size:", arrayBuffer.byteLength, "bytes");
     
-    console.log("PDF size:", uint8Array.length, "bytes");
-    
-    // Load PDF document
-    const loadingTask = getDocument({ data: uint8Array, useWorkerFetch: false, isEvalSupported: false, useSystemFonts: true });
-    const pdf = await loadingTask.promise;
-    
-    console.log("PDF loaded, pages:", pdf.numPages);
-    
-    let fullText = "";
-    
-    // Extract text from each page
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      try {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        
-        // Combine text items with proper spacing
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(" ");
-        
-        fullText += `\n--- Page ${pageNum} ---\n${pageText}\n`;
-        console.log(`Page ${pageNum} extracted, length: ${pageText.length}`);
-      } catch (pageError) {
-        console.error(`Error extracting page ${pageNum}:`, pageError);
-      }
-    }
+    // Extract text using unpdf
+    const { text, totalPages } = await extractText(arrayBuffer, { mergePages: true });
+    console.log("Extracted text from", totalPages, "pages, length:", text.length);
     
     // Clean up text
-    fullText = fullText
+    const cleanedText = text
       .replace(/\s+/g, ' ')
       .replace(/\n\s*\n/g, '\n')
       .trim();
     
-    console.log("Total extracted text length:", fullText.length);
-    return fullText.slice(0, 20000); // Limit to avoid token limits
+    return cleanedText.slice(0, 25000); // Limit to avoid token limits
     
   } catch (error) {
     console.error("PDF extraction error:", error);
     
-    // Fallback: Try basic text extraction
+    // Enhanced fallback extraction
     try {
-      console.log("Trying fallback text extraction...");
+      console.log("Trying enhanced fallback extraction...");
       const response = await fetch(fileUrl);
       const arrayBuffer = await response.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
-      const decoder = new TextDecoder("utf-8", { fatal: false });
+      const decoder = new TextDecoder("latin1", { fatal: false });
       const rawText = decoder.decode(uint8Array);
       
-      // Extract readable text using multiple patterns
       let extractedText = "";
       
-      // Pattern 1: Text between parentheses in PDF (Tj operator)
-      const tjMatches = rawText.match(/\(([^()]+)\)\s*Tj/g);
-      if (tjMatches) {
-        for (const match of tjMatches) {
-          const text = match.match(/\(([^()]+)\)/)?.[1] || "";
-          if (text.length > 1) extractedText += text + " ";
-        }
+      // Pattern 1: Text in parentheses with Tj operator
+      const tjPattern = /\(([^\\()]+(?:\\.[^\\()]*)*)\)\s*Tj/g;
+      let match;
+      while ((match = tjPattern.exec(rawText)) !== null) {
+        let text = match[1]
+          .replace(/\\n/g, '\n')
+          .replace(/\\r/g, '\r')
+          .replace(/\\t/g, '\t')
+          .replace(/\\\\/g, '\\')
+          .replace(/\\(.)/g, '$1');
+        if (text.length > 0) extractedText += text + " ";
       }
       
-      // Pattern 2: TJ array operator
-      const tjArrayMatches = rawText.match(/\[((?:\([^()]*\)|[^[\]])*)\]\s*TJ/g);
-      if (tjArrayMatches) {
-        for (const match of tjArrayMatches) {
-          const texts = match.match(/\(([^()]*)\)/g);
-          if (texts) {
-            for (const t of texts) {
-              const text = t.slice(1, -1);
-              if (text.length > 0) extractedText += text;
-            }
+      // Pattern 2: TJ array operator (multiple strings)
+      const tjArrayPattern = /\[((?:[^[\]]*|\([^)]*\))*)\]\s*TJ/gi;
+      while ((match = tjArrayPattern.exec(rawText)) !== null) {
+        const content = match[1];
+        const stringPattern = /\(([^)]*)\)/g;
+        let strMatch;
+        while ((strMatch = stringPattern.exec(content)) !== null) {
+          let text = strMatch[1]
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '')
+            .replace(/\\(.)/g, '$1');
+          if (text.length > 0) extractedText += text;
+        }
+        extractedText += " ";
+      }
+      
+      // Pattern 3: Unicode text (hex encoded)
+      const hexPattern = /<([0-9A-Fa-f]+)>\s*Tj/g;
+      while ((match = hexPattern.exec(rawText)) !== null) {
+        const hex = match[1];
+        let text = "";
+        for (let i = 0; i < hex.length; i += 4) {
+          const code = parseInt(hex.substr(i, 4), 16);
+          if (code > 31 && code < 127) {
+            text += String.fromCharCode(code);
+          } else if (code > 127) {
+            text += String.fromCharCode(code);
           }
-          extractedText += " ";
         }
+        if (text.length > 0) extractedText += text + " ";
       }
       
+      // Clean up
       extractedText = extractedText
-        .replace(/\\[nrt]/g, ' ')
+        .replace(/[^\x20-\x7E\u00A0-\u00FF\u0100-\u017F\n]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
       
       console.log("Fallback extraction length:", extractedText.length);
-      return extractedText.slice(0, 20000);
+      return extractedText.slice(0, 25000);
       
     } catch (fallbackError) {
-      console.error("Fallback extraction also failed:", fallbackError);
+      console.error("Fallback extraction failed:", fallbackError);
       return "";
     }
   }
@@ -232,7 +225,7 @@ The user can share specific questions by typing them, and you will answer.
    ════════════════════════════════════════════════════════════
 
 ✅ **3. ANSWER GENERATED PAPER**
-   - Provide complete solutions for any AI-generated paper
+   - Provide complete solutions for any AI-generated questions
    - Follow the same detailed format
 
 📖 **4. EXPLAIN CONCEPTS**
