@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { extractText } from "https://esm.sh/unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,8 +19,8 @@ interface ChatMessage {
   content: string;
 }
 
-// Function to extract text from PDF using unpdf
-async function extractPdfText(fileUrl: string): Promise<string> {
+// Function to convert PDF to images and extract text using vision AI
+async function extractPdfWithVision(fileUrl: string, apiKey: string): Promise<string> {
   try {
     console.log("Fetching PDF from:", fileUrl);
     const response = await fetch(fileUrl);
@@ -32,92 +31,65 @@ async function extractPdfText(fileUrl: string): Promise<string> {
     }
 
     const arrayBuffer = await response.arrayBuffer();
+    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
     console.log("PDF size:", arrayBuffer.byteLength, "bytes");
     
-    // Extract text using unpdf
-    const { text, totalPages } = await extractText(arrayBuffer, { mergePages: true });
-    console.log("Extracted text from", totalPages, "pages, length:", text.length);
+    // Use vision model to extract text from PDF
+    console.log("Using vision AI to extract PDF content...");
     
-    // Clean up text
-    const cleanedText = text
-      .replace(/\s+/g, ' ')
-      .replace(/\n\s*\n/g, '\n')
-      .trim();
+    const visionResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Extract ALL text content from this exam paper PDF. Include:
+- University/college name and header
+- Subject name, course, semester, year
+- All instructions
+- EVERY question with complete text, sub-parts (a, b, c...), and marks
+- Section headers (Section A, Section B)
+- Any other important information
+
+Format the output clearly with proper structure. Do not summarize - extract the COMPLETE text as it appears.`
+              },
+              {
+                type: "file",
+                file: {
+                  filename: "paper.pdf",
+                  file_data: `data:application/pdf;base64,${base64Pdf}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 8000,
+      }),
+    });
+
+    if (!visionResponse.ok) {
+      const errorText = await visionResponse.text();
+      console.error("Vision API error:", visionResponse.status, errorText);
+      return "";
+    }
+
+    const visionData = await visionResponse.json();
+    const extractedText = visionData.choices?.[0]?.message?.content || "";
+    console.log("Vision extraction successful, length:", extractedText.length);
     
-    return cleanedText.slice(0, 25000); // Limit to avoid token limits
+    return extractedText.slice(0, 30000);
     
   } catch (error) {
     console.error("PDF extraction error:", error);
-    
-    // Enhanced fallback extraction
-    try {
-      console.log("Trying enhanced fallback extraction...");
-      const response = await fetch(fileUrl);
-      const arrayBuffer = await response.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-      const decoder = new TextDecoder("latin1", { fatal: false });
-      const rawText = decoder.decode(uint8Array);
-      
-      let extractedText = "";
-      
-      // Pattern 1: Text in parentheses with Tj operator
-      const tjPattern = /\(([^\\()]+(?:\\.[^\\()]*)*)\)\s*Tj/g;
-      let match;
-      while ((match = tjPattern.exec(rawText)) !== null) {
-        let text = match[1]
-          .replace(/\\n/g, '\n')
-          .replace(/\\r/g, '\r')
-          .replace(/\\t/g, '\t')
-          .replace(/\\\\/g, '\\')
-          .replace(/\\(.)/g, '$1');
-        if (text.length > 0) extractedText += text + " ";
-      }
-      
-      // Pattern 2: TJ array operator (multiple strings)
-      const tjArrayPattern = /\[((?:[^[\]]*|\([^)]*\))*)\]\s*TJ/gi;
-      while ((match = tjArrayPattern.exec(rawText)) !== null) {
-        const content = match[1];
-        const stringPattern = /\(([^)]*)\)/g;
-        let strMatch;
-        while ((strMatch = stringPattern.exec(content)) !== null) {
-          let text = strMatch[1]
-            .replace(/\\n/g, '\n')
-            .replace(/\\r/g, '')
-            .replace(/\\(.)/g, '$1');
-          if (text.length > 0) extractedText += text;
-        }
-        extractedText += " ";
-      }
-      
-      // Pattern 3: Unicode text (hex encoded)
-      const hexPattern = /<([0-9A-Fa-f]+)>\s*Tj/g;
-      while ((match = hexPattern.exec(rawText)) !== null) {
-        const hex = match[1];
-        let text = "";
-        for (let i = 0; i < hex.length; i += 4) {
-          const code = parseInt(hex.substr(i, 4), 16);
-          if (code > 31 && code < 127) {
-            text += String.fromCharCode(code);
-          } else if (code > 127) {
-            text += String.fromCharCode(code);
-          }
-        }
-        if (text.length > 0) extractedText += text + " ";
-      }
-      
-      // Clean up
-      extractedText = extractedText
-        .replace(/[^\x20-\x7E\u00A0-\u00FF\u0100-\u017F\n]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      
-      console.log("Fallback extraction length:", extractedText.length);
-      return extractedText.slice(0, 25000);
-      
-    } catch (fallbackError) {
-      console.error("Fallback extraction failed:", fallbackError);
-      return "";
-    }
+    return "";
   }
 }
 
@@ -139,11 +111,11 @@ serve(async (req) => {
       throw new Error("AI service is not configured");
     }
 
-    // Extract PDF content
+    // Extract PDF content using vision
     console.log("Extracting PDF content for:", paperContext.subject);
-    const pdfContent = await extractPdfText(paperContext.fileUrl);
+    const pdfContent = await extractPdfWithVision(paperContext.fileUrl, LOVABLE_API_KEY);
     
-    const hasPdfContent = pdfContent.length > 50;
+    const hasPdfContent = pdfContent.length > 100;
     console.log("PDF content available:", hasPdfContent, "Length:", pdfContent.length);
 
     // Build system prompt with extracted content
@@ -160,10 +132,16 @@ serve(async (req) => {
 
 ${hasPdfContent ? `
 ═══════════════════════════════════════════════════════════════
-                    PAPER CONTENT (EXTRACTED)
+              EXTRACTED PAPER CONTENT (FULL TEXT)
 ═══════════════════════════════════════════════════════════════
 ${pdfContent}
 ═══════════════════════════════════════════════════════════════
+
+IMPORTANT: The above content was extracted from the actual uploaded PDF. 
+Use this EXACT content to:
+1. Answer questions from this paper
+2. Generate similar papers with the same format and difficulty
+3. Base all responses on this actual paper content
 ` : `
 ⚠️ NOTE: Could not extract text from this PDF automatically. 
 The user can share specific questions by typing them, and you will answer.
@@ -174,14 +152,20 @@ The user can share specific questions by typing them, and you will answer.
 ═══════════════════════════════════════════════════════════════
 
 📝 **1. ANSWER QUESTIONS FROM THIS PAPER**
-   - Carefully read the extracted paper content above
-   - Identify each question and provide detailed answers
-   - Include step-by-step solutions with formulas
-   - Draw diagrams in ASCII art when needed
-   - Use proper numbering (Q1a, Q1b, Q2, etc.)
+   - Read the extracted paper content above carefully
+   - Provide detailed step-by-step solutions for each question
+   - Include formulas, diagrams (ASCII art), and explanations
+   - Match the marking scheme (e.g., 2M, 5M, 10M questions)
+   - Number answers exactly as in the paper (Q1, Q2, Q3a, Q3b, etc.)
 
 📄 **2. GENERATE A SIMILAR EXAM PAPER**
-   When asked to generate a new paper, use EXACTLY this format:
+   When generating a new paper:
+   - Use the EXACT SAME FORMAT as the original paper
+   - Keep the same header style, sections, marks distribution
+   - Create NEW questions on the SAME topics
+   - Match the difficulty level exactly
+   
+   Format to use:
 
    ╔═══════════════════════════════════════════════════════════╗
    ║              [UNIVERSITY/INSTITUTION NAME]               ║
@@ -193,54 +177,44 @@ The user can share specific questions by typing them, and you will answer.
    ╚═══════════════════════════════════════════════════════════╝
 
    INSTRUCTIONS:
-   1. All questions are compulsory
-   2. Attempt any FIVE questions from each section
-   3. Draw neat diagrams wherever required
-   4. Assume suitable data if necessary
+   [Copy the same instructions from original paper]
 
    ════════════════════════════════════════════════════════════
                           SECTION A
-                  (Short Answer Questions: 2-5 marks each)
+                  (Short Answer Questions)
    ════════════════════════════════════════════════════════════
 
-   Q.1  [Question text here]                              [2M]
-   Q.2  [Question text here]                              [3M]
-   ... (continue with 6-8 short questions)
+   Q.1  [New question on same topic as original Q1]       [Marks]
+   Q.2  [New question on same topic as original Q2]       [Marks]
+   ...
 
    ════════════════════════════════════════════════════════════
                           SECTION B
-                  (Long Answer Questions: 10-15 marks each)
+                  (Long Answer Questions)
    ════════════════════════════════════════════════════════════
 
-   Q.1  [Main question]                                   [10M]
+   Q.1  [Main question]                                   [Marks]
         (a) [Part a]
         (b) [Part b]
-        (c) [Part c]
-
-   Q.2  [Another long question]                           [15M]
-   ... (continue with 4-5 long questions)
+   ...
 
    ════════════════════════════════════════════════════════════
                           END OF PAPER
    ════════════════════════════════════════════════════════════
 
-✅ **3. ANSWER GENERATED PAPER**
-   - Provide complete solutions for any AI-generated questions
-   - Follow the same detailed format
-
-📖 **4. EXPLAIN CONCEPTS**
-   - Break down topics from the paper
-   - Provide examples and real-world applications
+✅ **3. ANSWER ANY QUESTION**
+   - Answer user's specific questions about topics in the paper
+   - Explain concepts from the syllabus
+   - Provide examples and applications
 
 ═══════════════════════════════════════════════════════════════
                        IMPORTANT RULES
 ═══════════════════════════════════════════════════════════════
-✓ ALWAYS base answers on the extracted paper content above
-✓ Match the difficulty level and style of the original paper
-✓ Use proper academic formatting and numbering
-✓ Include formulas in clear notation
-✓ Describe diagrams in detail or use ASCII art
-✓ If paper content is not available, ask user to share questions
+✓ ALWAYS use the extracted paper content as your primary reference
+✓ Match the original paper's format, style, and difficulty
+✓ Include step-by-step solutions with proper formulas
+✓ Draw diagrams using ASCII art when needed
+✓ Be accurate and academically rigorous
 ═══════════════════════════════════════════════════════════════`;
 
     console.log("Sending request to Lovable AI...");
