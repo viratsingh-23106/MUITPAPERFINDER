@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getDocument, GlobalWorkerOptions } from "https://esm.sh/pdfjs-dist@4.4.168/build/pdf.min.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,8 +20,11 @@ interface ChatMessage {
   content: string;
 }
 
-// Function to fetch PDF and extract text (simplified - extracts readable text portions)
-async function fetchPdfContent(fileUrl: string): Promise<string> {
+// Disable worker for Deno environment
+GlobalWorkerOptions.workerSrc = "";
+
+// Function to extract text from PDF using pdf.js
+async function extractPdfText(fileUrl: string): Promise<string> {
   try {
     console.log("Fetching PDF from:", fileUrl);
     const response = await fetch(fileUrl);
@@ -30,58 +34,97 @@ async function fetchPdfContent(fileUrl: string): Promise<string> {
       return "";
     }
 
-    // Get the PDF as array buffer
     const arrayBuffer = await response.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
     
-    // Convert to string and try to extract text content
-    // This is a simplified extraction - looks for text streams in PDF
-    let textContent = "";
-    const decoder = new TextDecoder("utf-8", { fatal: false });
-    const pdfText = decoder.decode(uint8Array);
+    console.log("PDF size:", uint8Array.length, "bytes");
     
-    // Extract text between stream markers (simplified PDF text extraction)
-    const streamMatches = pdfText.match(/stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g);
-    if (streamMatches) {
-      for (const match of streamMatches) {
-        // Try to get readable text
-        const content = match.replace(/stream[\r\n]+/, '').replace(/[\r\n]+endstream/, '');
-        // Filter only printable ASCII characters
-        const readable = content.replace(/[^\x20-\x7E\n\r\t]/g, ' ').replace(/\s+/g, ' ').trim();
-        if (readable.length > 20 && readable.length < 5000) {
-          textContent += readable + "\n";
-        }
+    // Load PDF document
+    const loadingTask = getDocument({ data: uint8Array, useWorkerFetch: false, isEvalSupported: false, useSystemFonts: true });
+    const pdf = await loadingTask.promise;
+    
+    console.log("PDF loaded, pages:", pdf.numPages);
+    
+    let fullText = "";
+    
+    // Extract text from each page
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      try {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        
+        // Combine text items with proper spacing
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(" ");
+        
+        fullText += `\n--- Page ${pageNum} ---\n${pageText}\n`;
+        console.log(`Page ${pageNum} extracted, length: ${pageText.length}`);
+      } catch (pageError) {
+        console.error(`Error extracting page ${pageNum}:`, pageError);
       }
     }
-
-    // Also try to extract text from BT/ET blocks (text objects)
-    const textBlocks = pdfText.match(/BT[\s\S]*?ET/g);
-    if (textBlocks) {
-      for (const block of textBlocks) {
-        // Extract text from Tj and TJ operators
-        const tjMatches = block.match(/\(([^)]*)\)\s*Tj/g);
-        if (tjMatches) {
-          for (const tj of tjMatches) {
-            const text = tj.match(/\(([^)]*)\)/)?.[1] || '';
-            if (text.length > 2) {
-              textContent += text + " ";
+    
+    // Clean up text
+    fullText = fullText
+      .replace(/\s+/g, ' ')
+      .replace(/\n\s*\n/g, '\n')
+      .trim();
+    
+    console.log("Total extracted text length:", fullText.length);
+    return fullText.slice(0, 20000); // Limit to avoid token limits
+    
+  } catch (error) {
+    console.error("PDF extraction error:", error);
+    
+    // Fallback: Try basic text extraction
+    try {
+      console.log("Trying fallback text extraction...");
+      const response = await fetch(fileUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const decoder = new TextDecoder("utf-8", { fatal: false });
+      const rawText = decoder.decode(uint8Array);
+      
+      // Extract readable text using multiple patterns
+      let extractedText = "";
+      
+      // Pattern 1: Text between parentheses in PDF (Tj operator)
+      const tjMatches = rawText.match(/\(([^()]+)\)\s*Tj/g);
+      if (tjMatches) {
+        for (const match of tjMatches) {
+          const text = match.match(/\(([^()]+)\)/)?.[1] || "";
+          if (text.length > 1) extractedText += text + " ";
+        }
+      }
+      
+      // Pattern 2: TJ array operator
+      const tjArrayMatches = rawText.match(/\[((?:\([^()]*\)|[^[\]])*)\]\s*TJ/g);
+      if (tjArrayMatches) {
+        for (const match of tjArrayMatches) {
+          const texts = match.match(/\(([^()]*)\)/g);
+          if (texts) {
+            for (const t of texts) {
+              const text = t.slice(1, -1);
+              if (text.length > 0) extractedText += text;
             }
           }
+          extractedText += " ";
         }
       }
+      
+      extractedText = extractedText
+        .replace(/\\[nrt]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      console.log("Fallback extraction length:", extractedText.length);
+      return extractedText.slice(0, 20000);
+      
+    } catch (fallbackError) {
+      console.error("Fallback extraction also failed:", fallbackError);
+      return "";
     }
-
-    // Clean up the extracted text
-    textContent = textContent
-      .replace(/[^\x20-\x7E\n\r]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    console.log("Extracted text length:", textContent.length);
-    return textContent.slice(0, 15000); // Limit to avoid token limits
-  } catch (error) {
-    console.error("Error extracting PDF content:", error);
-    return "";
   }
 }
 
@@ -103,19 +146,19 @@ serve(async (req) => {
       throw new Error("AI service is not configured");
     }
 
-    // Fetch and extract PDF content
-    console.log("Fetching PDF content for analysis...");
-    const pdfContent = await fetchPdfContent(paperContext.fileUrl);
+    // Extract PDF content
+    console.log("Extracting PDF content for:", paperContext.subject);
+    const pdfContent = await extractPdfText(paperContext.fileUrl);
     
-    const hasPdfContent = pdfContent.length > 100;
+    const hasPdfContent = pdfContent.length > 50;
     console.log("PDF content available:", hasPdfContent, "Length:", pdfContent.length);
 
-    // Build system prompt with paper context and actual content
-    const systemPrompt = `You are an expert exam paper assistant helping students with exam papers. You have access to the actual content of the uploaded paper.
+    // Build system prompt with extracted content
+    const systemPrompt = `You are an expert exam paper assistant. You help students understand exam papers, answer questions, and generate similar practice papers.
 
-═══════════════════════════════════════════════════
-                    PAPER DETAILS
-═══════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════
+                         PAPER INFORMATION
+═══════════════════════════════════════════════════════════════
 📚 Subject: ${paperContext.subject}
 🎓 Course: ${paperContext.course}
 🔬 Branch: ${paperContext.branch || "General"}
@@ -123,77 +166,91 @@ serve(async (req) => {
 📆 Year: ${paperContext.year}
 
 ${hasPdfContent ? `
-═══════════════════════════════════════════════════
-              EXTRACTED PAPER CONTENT
-═══════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════
+                    PAPER CONTENT (EXTRACTED)
+═══════════════════════════════════════════════════════════════
 ${pdfContent}
-═══════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════
 ` : `
-NOTE: Could not extract text from PDF directly. Please analyze based on the paper details above. If the user asks about specific questions, ask them to share the question text.
+⚠️ NOTE: Could not extract text from this PDF automatically. 
+The user can share specific questions by typing them, and you will answer.
 `}
 
-YOUR CAPABILITIES:
+═══════════════════════════════════════════════════════════════
+                       YOUR CAPABILITIES
+═══════════════════════════════════════════════════════════════
 
-1️⃣ **ANSWER THIS PAPER'S QUESTIONS**
-   - Analyze the extracted content above carefully
-   - Identify each question from the paper
-   - Provide detailed, step-by-step answers
-   - Include formulas, diagrams (described), and examples where needed
-   - Format answers with proper numbering matching the paper
+📝 **1. ANSWER QUESTIONS FROM THIS PAPER**
+   - Carefully read the extracted paper content above
+   - Identify each question and provide detailed answers
+   - Include step-by-step solutions with formulas
+   - Draw diagrams in ASCII art when needed
+   - Use proper numbering (Q1a, Q1b, Q2, etc.)
 
-2️⃣ **GENERATE SIMILAR EXAM PAPER**
-   When generating a new paper, STRICTLY follow this format:
+📄 **2. GENERATE A SIMILAR EXAM PAPER**
+   When asked to generate a new paper, use EXACTLY this format:
 
-   ┌─────────────────────────────────────────────────┐
-   │           [UNIVERSITY/COLLEGE NAME]            │
-   │          ${paperContext.course.toUpperCase()} EXAMINATION ${paperContext.year}           │
-   │                                                 │
-   │  Subject: ${paperContext.subject}              │
-   │  Semester: ${paperContext.semester} | Branch: ${paperContext.branch || "General"}  │
-   │  Time: 3 Hours              Max Marks: 100     │
-   └─────────────────────────────────────────────────┘
+   ╔═══════════════════════════════════════════════════════════╗
+   ║              [UNIVERSITY/INSTITUTION NAME]               ║
+   ║        ${paperContext.course.toUpperCase()} EXAMINATION - ${paperContext.year}         ║
+   ╠═══════════════════════════════════════════════════════════╣
+   ║  Subject: ${paperContext.subject.padEnd(40)}║
+   ║  Semester: ${paperContext.semester} | Branch: ${(paperContext.branch || "General").padEnd(20)}║
+   ║  Time: 3 Hours                    Maximum Marks: 100     ║
+   ╚═══════════════════════════════════════════════════════════╝
 
-   Instructions:
-   1. Attempt any FIVE questions from Section A & B
-   2. Each question carries equal marks
-   3. Diagrams should be drawn wherever necessary
+   INSTRUCTIONS:
+   1. All questions are compulsory
+   2. Attempt any FIVE questions from each section
+   3. Draw neat diagrams wherever required
+   4. Assume suitable data if necessary
 
-   ══════════════════════════════════════════════════
-                      SECTION A
-           (Short Answer Questions - 2-3 marks each)
-   ══════════════════════════════════════════════════
+   ════════════════════════════════════════════════════════════
+                          SECTION A
+                  (Short Answer Questions: 2-5 marks each)
+   ════════════════════════════════════════════════════════════
 
-   Q1. [Question text]
-   Q2. [Question text]
-   ... (5-8 short questions)
+   Q.1  [Question text here]                              [2M]
+   Q.2  [Question text here]                              [3M]
+   ... (continue with 6-8 short questions)
 
-   ══════════════════════════════════════════════════
-                      SECTION B
-           (Long Answer Questions - 10-15 marks each)
-   ══════════════════════════════════════════════════
+   ════════════════════════════════════════════════════════════
+                          SECTION B
+                  (Long Answer Questions: 10-15 marks each)
+   ════════════════════════════════════════════════════════════
 
-   Q1. [Detailed question with parts a, b, c if needed]
-   Q2. [Question text]
-   ... (4-5 long questions)
+   Q.1  [Main question]                                   [10M]
+        (a) [Part a]
+        (b) [Part b]
+        (c) [Part c]
 
-   ══════════════════════════════════════════════════
+   Q.2  [Another long question]                           [15M]
+   ... (continue with 4-5 long questions)
 
-3️⃣ **ANSWER GENERATED PAPER**
-   - Provide comprehensive answers for any AI-generated questions
-   - Use the same format and structure
+   ════════════════════════════════════════════════════════════
+                          END OF PAPER
+   ════════════════════════════════════════════════════════════
 
-4️⃣ **EXPLAIN TOPICS**
-   - Break down concepts from the paper
-   - Provide examples and analogies
+✅ **3. ANSWER GENERATED PAPER**
+   - Provide complete solutions for any AI-generated paper
+   - Follow the same detailed format
 
-IMPORTANT GUIDELINES:
-✓ Base your answers on the ACTUAL paper content extracted above
-✓ Match the difficulty level and question style of the original paper
-✓ Use proper academic formatting
-✓ Include relevant formulas, diagrams, and examples
-✓ Number questions exactly as they appear in the paper when answering`;
+📖 **4. EXPLAIN CONCEPTS**
+   - Break down topics from the paper
+   - Provide examples and real-world applications
 
-    console.log("Sending request to Lovable AI for paper:", paperContext.subject);
+═══════════════════════════════════════════════════════════════
+                       IMPORTANT RULES
+═══════════════════════════════════════════════════════════════
+✓ ALWAYS base answers on the extracted paper content above
+✓ Match the difficulty level and style of the original paper
+✓ Use proper academic formatting and numbering
+✓ Include formulas in clear notation
+✓ Describe diagrams in detail or use ASCII art
+✓ If paper content is not available, ask user to share questions
+═══════════════════════════════════════════════════════════════`;
+
+    console.log("Sending request to Lovable AI...");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -216,13 +273,13 @@ IMPORTANT GUIDELINES:
       console.error("AI gateway error:", response.status, errorText);
       
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limits exceeded" }), {
+        return new Response(JSON.stringify({ error: "Rate limits exceeded. Please try again later." }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required" }), {
+        return new Response(JSON.stringify({ error: "Payment required. Please add credits." }), {
           status: 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
