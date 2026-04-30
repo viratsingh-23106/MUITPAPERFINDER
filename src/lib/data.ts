@@ -22,6 +22,14 @@ export const branches: Record<string, { id: string; name: string }[]> = {
     { id: "ee", name: "Electrical Engineering" },
     { id: "it", name: "Information Technology" },
   ],
+  mtech: [
+    { id: "cse", name: "Computer Science Engineering" },
+    { id: "ece", name: "Electronics & Communication" },
+    { id: "me", name: "Mechanical Engineering" },
+    { id: "ce", name: "Civil Engineering" },
+    { id: "ee", name: "Electrical Engineering" },
+    { id: "it", name: "Information Technology" },
+  ],
   diploma: [
     { id: "cse", name: "Computer Science" },
     { id: "ece", name: "Electronics" },
@@ -34,6 +42,7 @@ export const branches: Record<string, { id: string; name: string }[]> = {
     { id: "physics", name: "Physics" },
     { id: "chemistry", name: "Chemistry" },
     { id: "mathematics", name: "Mathematics" },
+    { id: "agriculture", name: "Agriculture" },
   ],
   msc: [
     { id: "cs", name: "Computer Science" },
