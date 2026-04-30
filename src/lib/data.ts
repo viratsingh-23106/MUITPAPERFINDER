@@ -75,7 +75,7 @@ export const years = [
 
 // Helper to check if course has branches
 export function courseHasBranches(courseId: string): boolean {
-  return ["btech", "diploma", "bsc", "msc"].includes(courseId);
+  return ["btech", "mtech", "diploma", "bsc", "msc"].includes(courseId);
 }
 
 // Get course name by id
