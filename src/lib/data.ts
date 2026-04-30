@@ -2,11 +2,15 @@
 
 export const courses = [
   { id: "btech", name: "B.Tech" },
+  { id: "mtech", name: "M.Tech" },
   { id: "bca", name: "BCA" },
   { id: "mca", name: "MCA" },
   { id: "diploma", name: "Diploma" },
   { id: "bsc", name: "B.Sc" },
   { id: "msc", name: "M.Sc" },
+  { id: "ba", name: "B.A" },
+  { id: "bba", name: "BBA" },
+  { id: "mba", name: "MBA" },
 ] as const;
 
 export const branches: Record<string, { id: string; name: string }[]> = {
